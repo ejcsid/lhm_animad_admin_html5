@@ -91,11 +91,22 @@ paper-checkbox<link rel="import" href="../../bower_components/polymer/polymer-el
         </paper-item>
       </paper-dialog>
 
+      <iron-ajax
+          auto
+          url="[[_url]]"
+          method="[[_httpMethod]]"
+          headers="[[_httpHeaders]]"
+          params="[[_httpParams]]"
+          handle-as="json"
+          on-response="handleResponse"
+          debounce-duration="[[_debounceDuration]]">
+      </iron-ajax>
+
       <!--
       // GENERATOR pattern (camel case): [DOMAINNAME][ENTITYNAME]List - id
       // GENERATOR pattern:             _filtered[ENTITYNAME] - items
       -->
-      <vaadin-grid id="animadKeepersList" items="[[_filteredKeepers]]" multi-sort="[[multiSort]]">
+      <vaadin-grid id="animadKeepersList" items="[[_filteredKeepers]]" multi-sort="[[multiSort]]" page-size="[[pageSize]]">
 
         <vaadin-grid-column width="50px" flex-grow="0">
           <template class="header">
@@ -123,42 +134,42 @@ paper-checkbox<link rel="import" href="../../bower_components/polymer/polymer-el
 
         <vaadin-grid-column>
           <template class="header">
-            <vaadin-grid-sorter path="firstname">[[t('firstname')]]</vaadin-grid-sorter>
+            <vaadin-grid-sorter path="firstname"  on-sorter-changed="_sortChanged">[[t('firstname')]]</vaadin-grid-sorter>
           </template>
           <template>[[item.firstname]]</template>
         </vaadin-grid-column>
 
         <vaadin-grid-column >
           <template class="header">
-            <vaadin-grid-sorter path="lastname">[[t('lastname')]]</vaadin-grid-sorter>
+            <vaadin-grid-sorter path="lastname" on-sorter-changed="_sortChanged">[[t('lastname')]]</vaadin-grid-sorter>
           </template>
           <template>[[item.lastname]]</template>
         </vaadin-grid-column>
 
         <vaadin-grid-column>
           <template class="header">
-            <vaadin-grid-sorter path="employmentdate">[[t('employmentdate')]]</vaadin-grid-sorter>
+            <vaadin-grid-sorter path="employmentdate" on-sorter-changed="_sortChanged">[[t('employmentdate')]]</vaadin-grid-sorter>
           </template>
           <template>[[item.employmentdate]]</template>
         </vaadin-grid-column>
 
         <vaadin-grid-column>
           <template class="header">
-            <vaadin-grid-sorter path="skill">[[t('skill')]]</vaadin-grid-sorter>
+            <vaadin-grid-sorter path="skill" on-sorter-changed="_sortChanged">[[t('skill')]]</vaadin-grid-sorter>
           </template>
           <template>[[item.skill]]</template>
         </vaadin-grid-column>
 
         <vaadin-grid-column>
-          <template class="header">
-            <vaadin-grid-sorter path="birthdate">[[t('birthdate')]]</vaadin-grid-sorter>
+          <template class="header" >
+            <vaadin-grid-sorter path="birthdate" on-sorter-changed="_sortChanged">[[t('birthdate')]]</vaadin-grid-sorter>
           </template>
           <template>[[item.birthdate]]</template>
         </vaadin-grid-column>
 
         <vaadin-grid-column>
-          <template class="header">
-            <vaadin-grid-sorter path="salary">[[t('salary')]]</vaadin-grid-sorter>
+          <template class="header" >
+            <vaadin-grid-sorter path="salary" on-sorter-changed="_sortChanged">[[t('salary')]]</vaadin-grid-sorter>
           </template>
           <template>[[item.salary]]</template>
         </vaadin-grid-column>
@@ -169,6 +180,14 @@ paper-checkbox<link rel="import" href="../../bower_components/polymer/polymer-el
           </template>
         </vaadin-grid-column>
       </vaadin-grid>
+
+      <div id="pages" hidden$="[[!_doPagination]]">
+          <button on-tap="_prev">&lt;</button>
+          <template is="dom-repeat" items="[[pages]]">
+            <button on-tap="_select" selected$="[[_isSelected(page, item)]]">[[item]]</button>
+          </template>
+          <button on-tap="_next">&gt;</button>
+        </div>
     </template>
 
     <script>
@@ -200,6 +219,40 @@ paper-checkbox<link rel="import" href="../../bower_components/polymer/polymer-el
             _entity: {
               type: String,
               value: 'keeper'
+            },
+            /* TBD: Must be configured, will change if using API Gateway*/
+            _url: {
+              type: String,
+              value: "http://localhost:39146/keepers"
+            },
+            /* GENERATOR: Defaults to GET */
+            _httpMethod: {
+              type: String,
+              value: 'GET'
+            },
+            /* JSON-Formatted String
+              Example: '{"X-Requested-With": "XMLHttpRequest"}'*/
+            _httpHeaders: {
+              type: String,
+              value: '{}'
+            },
+            /* JSON-Formatted String
+              Example: '{"part":"snippet", "q":"polymer", "key": "YOUTUBE_API_KEY", "type": "video"}'*/
+            _httpParams: {
+              type: String,
+              value: '{}'
+            },
+            /*Length of time in milliseconds to debounce multiple automatically generated requests*/
+            _debounceDuration: {
+              type: Number,
+              value: 300
+            },
+            /* temporary - will change to _keepers*/
+            _backendKeepers: {
+              type: Array,
+              value() {
+                return [];
+              }
             },
             _keepers: {
               type: Array,
@@ -347,12 +400,31 @@ paper-checkbox<link rel="import" href="../../bower_components/polymer/polymer-el
            _noItemsSelected: {
              type: Boolean,
              computed: "_hasNoItemsSelected(inverted, indeterminate)"
-           }
+           },
+           _doPagination: {
+             type: Boolean,
+             value: true
+           },
+           pageSize: {
+             type: Number,
+             value: 7
+           },
+           page: {
+             type: Number,
+             value: 0
+           },
+           pages: {
+             type: Array,
+             value: null
+           },
          }
         }
 
         static get observers() {
-            return ['_resetSelection(inverted)']
+            return [
+              '_resetSelection(inverted)',
+              '_itemsChanged(_filteredKeepers, page)'
+            ]
         }
 
         _resetSelection(inverted) {
@@ -563,6 +635,71 @@ paper-checkbox<link rel="import" href="../../bower_components/polymer/polymer-el
           return true;
         }
 
+        _isSelected(page, item) {
+            return page === item - 1;
+        }
+
+        _select(e) {
+          this.page = e.model.item - 1;
+        }
+
+        _next() {
+          this.page = Math.min(this.pages.length - 1, this.page + 1);
+        }
+
+        _prev() {
+          this.page = Math.max(0, this.page - 1);
+        }
+
+        _itemsChanged(items, page) {
+          if (!this._doPagination) {
+            this.pageSize = this._filteredKeepers.length;
+            return;
+          }
+
+          var records = this._filteredKeepers;
+          if (!this.pages) {
+            this.pages = Array.apply( null, {length: Math.ceil(records.length / this.pageSize)} ).map(function(item, index) {
+              return index + 1;
+            });
+          }
+
+          var start = page * this.pageSize;
+          var end = (page + 1) * this.pageSize;
+          this.$.animadKeepersList.items = records.slice(start, end);
+        }
+
+        _sortChanged(e) {
+          // TBD: Sortierung für Number und Date
+          var key = e.target.path;
+          var direction = e.target.direction;
+
+          // nur anwenden bei Pagination
+          if (this._doPagination && direction) {
+
+            this._filteredKeepers.sort(function(a, b){
+              if (direction === 'asc') {
+                if (a[key].toLowerCase() < b[key].toLowerCase()) return -1;
+                if (a[key].toLowerCase() > b[key].toLowerCase()) return 1;
+              }
+              else {
+                if (a[key].toLowerCase() > b[key].toLowerCase()) return -1;
+                if (a[key].toLowerCase() < b[key].toLowerCase()) return 1;
+              }
+              return 0;
+            });
+
+            // Sonst werden am Anfang nur die angezeigten Datensätze sortiert angezeigt
+            // this.notifyPath('_filteredKeepers'); // kein Aufruf von this._itemsChanged
+            this._itemsChanged(this._filteredKeepers, this.page);
+          }
+        }
+
+        handleResponse(e) {
+          console.log(e.detail.__data.response._embedded.keepers);
+          this._backendKeepers = e.detail.__data.response._embedded.keepers;
+          console.log(e.detail.__data.response._embedded.keepers);
+        }
       }
 
       customElements.define(AnimadKeepersList.is, AnimadKeepersList);

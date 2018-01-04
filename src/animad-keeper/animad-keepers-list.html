@@ -510,6 +510,7 @@ paper-checkbox<link rel="import" href="../../bower_components/polymer/polymer-el
           // unset temporary delete information
           this.unsetTemporaryDeleteInfo();
 
+          this._itemsChanged(this._filteredKeepers, this.page);
         }
 
         confirmDeleteSelected(e) {
